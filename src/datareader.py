@@ -1,0 +1,137 @@
+import numpy as np
+import logging
+logger = logging.getLogger()
+
+slot_list = ['playlist', 'music_item', 'geographic_poi', 'facility', 
+'movie_name', 'location_name', 'restaurant_name', 'track', 'restaurant_type', 
+'object_part_of_series_type', 'country', 'service', 'poi', 'party_size_description',
+'served_dish', 'genre', 'current_location', 'object_select', 'album', 'object_name',
+'state', 'sort', 'object_location_type', 'movie_type', 'spatial_relation', 'artist', 
+'cuisine', 'entity_name', 'object_type', 'playlist_owner', 'timeRange', 'city',
+'rating_value', 'best_rating', 'rating_unit', 'year', 'party_size_number',
+'condition_description', 'condition_temperature']
+
+father_son_slot={
+    'person':['artist', 'party_size_description','playlist_owner'],
+    'location':['state','city','geographic_poi','object_location_type','location_name','country','poi'],
+    'special_name':['album','service','entity_name','playlist','music_item','track','movie_name','object_name',
+                    'served_dish','restaurant_name','cuisine'],
+    'common_name':['object_type', 'object_part_of_series_type','movie_type','restaurant_type','genre','facility',
+                'condition_description','condition_temperature'],
+    'number':['rating_value','best_rating','year','party_size_number','timeRange'],
+    'direction':['spatial_relation','current_location','object_select'],
+    'others':['rating_unit', 'sort']
+}
+
+y1_set = ['O','B-person','I-person','B-location','I-location','B-special_name','I-special_name','B-common_name','I-common_name',
+'B-number','I-number','B-direction','I-direction','B-others','I-others']
+y2_set = ['O', 'B-playlist', 'I-playlist', 'B-music_item', 'I-music_item', 'B-geographic_poi', 
+'I-geographic_poi', 'B-facility', 'I-facility', 'B-movie_name', 'I-movie_name', 'B-location_name', 'I-location_name', 
+'B-restaurant_name', 'I-restaurant_name', 'B-track', 'I-track', 'B-restaurant_type', 'I-restaurant_type', 
+'B-object_part_of_series_type', 'I-object_part_of_series_type', 'B-country', 'I-country', 'B-service', 'I-service',
+ 'B-poi', 'I-poi', 'B-party_size_description', 'I-party_size_description', 'B-served_dish', 'I-served_dish', 
+ 'B-genre',  'I-genre', 'B-current_location', 'I-current_location', 'B-object_select', 'I-object_select', 
+ 'B-album', 'I-album', 'B-object_name', 'I-object_name', 'B-state', 'I-state', 'B-sort', 'I-sort',
+  'B-object_location_type', 'I-object_location_type', 'B-movie_type', 'I-movie_type', 'B-spatial_relation', 'I-spatial_relation',
+   'B-artist', 'I-artist', 'B-cuisine', 'I-cuisine', 'B-entity_name', 'I-entity_name', 'B-object_type', 'I-object_type', 
+   'B-playlist_owner', 'I-playlist_owner', 'B-timeRange', 'I-timeRange', 'B-city', 'I-city', 'B-rating_value',
+    'B-best_rating', 'B-rating_unit', 'B-year', 'B-party_size_number', 'B-condition_description', 'B-condition_temperature']
+domain_set = ["AddToPlaylist", "BookRestaurant", "GetWeather", "PlayMusic", "RateBook", "SearchCreativeWork", "SearchScreeningEvent"]
+
+
+PAD_INDEX = 0
+UNK_INDEX = 1
+
+
+class Vocab():
+    def __init__(self):
+        self.word2index = {"PAD":PAD_INDEX, "UNK":UNK_INDEX}
+        self.word2count = {}
+        self.index2word = {PAD_INDEX: "PAD", UNK_INDEX: "UNK"}
+        self.n_words = 2
+    def index_words(self, sentence):
+        for word in sentence:
+            if word not in self.word2index:
+                self.word2index[word] = self.n_words
+                self.index2word[self.n_words] = word
+                self.word2count[word] = 1
+                self.n_words+=1
+            else:
+                self.word2count[word]+=1
+
+def get_father_slot():
+    res_dict = {}
+    for k,v in father_son_slot.items():
+        for s in v:
+            res_dict[s] = k
+    return res_dict
+
+def read_file(filepath, vocab, son_to_fa_slot, use_label_encoder, domain=None):
+    utter_list, y1_list, y2_list, template_list = [], [], [], []
+    with open(filepath, "r") as f:
+        for i, line in enumerate(f):
+            line = line.strip()
+            splits = line.split("\t")
+            tokens = splits[0].split()
+            l2_list = splits[1].split()
+
+            utter_list.append(tokens)
+            y2_list.append(l2_list)
+
+            vocab.index_words(tokens)
+
+            l1_list = []
+            for l in l2_list:
+                if "B" in l:
+                    l1_list.append("B-"+son_to_fa_slot[l[2:]])
+                elif "I" in l:
+                    l1_list.append("I-"+son_to_fa_slot[l[2:]])
+                else:
+                    l1_list.append('O')
+            y1_list.append(l1_list)
+
+            if use_label_encoder:
+                template_each_sample = [[], [], []]
+                assert len(tokens) == len(l2_list)
+                for token, l2 in zip(tokens, l2_list):
+                    if "I" in l2: continue
+                    if l2 == "O":
+                        template_each_sample[0].append(token)
+                        template_each_sample[1].append(token)
+                        template_each_sample[2].append(token) 
+                    else:
+                        slot_name = l2.split("-")[1]
+                        template_each_sample[0].append(slot_name)
+                        np.random.shuffle(slot_list)
+                        idx = 0
+                        for j in range(1, 3):  # j from 1 to 2
+                            if slot_list[idx] != slot_name:
+                                template_each_sample[j].append(slot_list[idx])
+                            else:
+                                idx = idx + 1
+                                template_each_sample[j].append(slot_list[idx])
+                            idx = idx + 1
+                        
+                assert len(template_each_sample[0]) == len(template_each_sample[1]) == len(template_each_sample[2])
+
+                template_list.append(template_each_sample)
+
+    if use_label_encoder:
+        data_dict = {"utter": utter_list, "y1": y1_list, "y2": y2_list, "template_list": template_list}
+    else:
+        data_dict = {"utter": utter_list, "y1": y1_list, "y2": y2_list}
+    
+    return data_dict, vocab
+        
+def binarize_data(data, vocab, dm, use_label_encoder):
+    if use_label_encoder:
+        data_bin = {"utter": [], "y1": [], "y2": [], "domains": [], "template_list": []}
+    else:
+        data_bin = {"utter": [], "y1": [], "y2": [], "domains": []}
+    assert len(data_bin["utter"]) == len(data_bin["y1"]) == len(data_bin["y2"])
+    pass
+
+
+vocab = Vocab()
+d = get_father_slot()
+read_file("/home/sh/coach/data/snips/AddToPlaylist/AddToPlaylist.txt", vocab, d, use_label_encoder=True, domain="AddToPlaylist")
