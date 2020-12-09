@@ -22,7 +22,22 @@ father_son_slot={
     'direction':['spatial_relation','current_location','object_select'],
     'others':['rating_unit', 'sort']
 }
+# father_son_slot={
+#     'person':['artist', 'party_size_description','playlist_owner'],
+#     'location':['state','city','geographic_poi','country','poi'],
+#     'special_name':['album','service','entity_name','playlist','music_item',
+#                     'track','movie_name','object_name',
+#                     'served_dish','restaurant_name','cuisine'],
+#     'common_name':['object_type', 'object_part_of_series_type','movie_type',
+#                     'restaurant_type','genre','facility',
+#                 'condition_description','condition_temperature',
+#                 'object_location_type','location_name'],
+#     'number':['rating_value','best_rating','year','party_size_number','timeRange'],
+#     'direction':['spatial_relation','current_location','object_select'],
+#     'others':['rating_unit', 'sort']
+# }
 
+father_keys = ['person', 'location', 'special_name', 'common_name', 'number', 'direction', 'others']
 y1_set = ['O','B-person','I-person','B-location','I-location','B-special_name','I-special_name','B-common_name','I-common_name',
 'B-number','I-number','B-direction','I-direction','B-others','I-others']
 y2_set = ['O', 'B-playlist', 'I-playlist', 'B-music_item', 'I-music_item', 'B-geographic_poi', 
@@ -38,7 +53,20 @@ y2_set = ['O', 'B-playlist', 'I-playlist', 'B-music_item', 'I-music_item', 'B-ge
     'B-best_rating', 'B-rating_unit', 'B-year', 'B-party_size_number', 'B-condition_description', 'B-condition_temperature']
 domain_set = ["AddToPlaylist", "BookRestaurant", "GetWeather", "PlayMusic", "RateBook", "SearchCreativeWork", "SearchScreeningEvent"]
 
+domain2slot = {
+    "AddToPlaylist": ['music_item', 'playlist_owner', 'entity_name', 'playlist', 'artist'],
 
+    "BookRestaurant": ['city', 'facility', 'timeRange', 'restaurant_name', 'country', 'cuisine', 'restaurant_type', 'served_dish', 'party_size_number', 
+    'poi', 'sort', 'spatial_relation', 'state', 'party_size_description'],
+
+    "GetWeather": ['city', 'state', 'timeRange', 'current_location', 'country', 'spatial_relation', 'geographic_poi', 'condition_temperature', 'condition_description'],
+    "PlayMusic": ['genre', 'music_item', 'service', 'year', 'playlist', 'album','sort', 'track', 'artist'],
+    "RateBook": ['object_part_of_series_type', 'object_select', 'rating_value', 'object_name', 'object_type', 'rating_unit', 'best_rating'],
+    "SearchCreativeWork": ['object_name', 'object_type'],
+    "SearchScreeningEvent": ['timeRange', 'movie_type', 'object_location_type','object_type', 'location_name', 'spatial_relation', 'movie_name']
+}
+
+SLOT_PAD = 0
 PAD_INDEX = 0
 UNK_INDEX = 1
 
@@ -129,9 +157,67 @@ def binarize_data(data, vocab, dm, use_label_encoder):
     else:
         data_bin = {"utter": [], "y1": [], "y2": [], "domains": []}
     assert len(data_bin["utter"]) == len(data_bin["y1"]) == len(data_bin["y2"])
-    pass
+    dm_idx = domain_set.index(dm)
+    for utter_tokens, y1_list, y2_list in zip(data['utter'], data['y1'], data['y2']):
+        utter_bin, y1_bin, y2_bin = [], [], []
+        for token in utter_tokens:
+            utter_bin.append(vocab.word2index[token])
+        data_bin['utter'].append(utter_bin)
+
+        for y1 in y1_list:
+            y1_bin.append(y1_set.index(y1))
+        data_bin['y1'].append(y1_bin)
+
+        for y2 in y2_list:
+            y2_bin.append(y2_set.index(y2))
+        data_bin['y2'].append(y2_bin)
+
+        assert len(utter_bin) == len(y1_bin) == len(y2_bin)
+
+        data_bin['domains'].append(dm_idx)
+
+    if use_label_encoder:
+        for template_each_sample in data['template_list']:
+            template_each_sample_bin = [[],[],[]]
+            for tok1, tok2, tok3 in zip(template_each_sample[0], template_each_sample[1], template_each_sample[2]):
+                template_each_sample_bin[0].append(vocab.word2index[tok1])
+                template_each_sample_bin[1].append(vocab.word2index[tok2])
+                template_each_sample_bin[2].append(vocab.word2index[tok3])
+            data_bin['template_list'].append(template_each_sample_bin)
+    
+    return data_bin
+
+def datareader(use_label_encoder=False, prefix_path='/data/sh/coachdata/'):
+    logger.info("Loading and processing data ...")
+
+    data = {"AddToPlaylist": {}, "BookRestaurant": {}, "GetWeather": {}, "PlayMusic": {}, "RateBook": {}, "SearchCreativeWork": {}, "SearchScreeningEvent": {}}
+
+    # load data and build vocab
+    vocab = Vocab()
+    
+    son_to_fa_slot = get_father_slot()
 
 
-vocab = Vocab()
-d = get_father_slot()
-read_file("/home/sh/coach/data/snips/AddToPlaylist/AddToPlaylist.txt", vocab, d, use_label_encoder=True, domain="AddToPlaylist")
+    AddToPlaylistData, vocab = read_file(prefix_path+"snips/AddToPlaylist/AddToPlaylist.txt", vocab, son_to_fa_slot, use_label_encoder, domain="AddToPlaylist")
+    BookRestaurantData, vocab = read_file(prefix_path+"snips/BookRestaurant/BookRestaurant.txt", vocab, son_to_fa_slot, use_label_encoder, domain="BookRestaurant")
+    GetWeatherData, vocab = read_file(prefix_path+"snips/GetWeather/GetWeather.txt", vocab, son_to_fa_slot, use_label_encoder, domain="GetWeather")
+    PlayMusicData, vocab = read_file(prefix_path+"snips/PlayMusic/PlayMusic.txt", vocab, son_to_fa_slot, use_label_encoder, domain="PlayMusic")
+    RateBookData, vocab = read_file(prefix_path+"snips/RateBook/RateBook.txt", vocab, son_to_fa_slot, use_label_encoder, domain="RateBook")
+    SearchCreativeWorkData, vocab = read_file(prefix_path+"snips/SearchCreativeWork/SearchCreativeWork.txt", vocab, son_to_fa_slot, use_label_encoder, domain="SearchCreativeWork")
+    SearchScreeningEventData, vocab = read_file(prefix_path+"snips/SearchScreeningEvent/SearchScreeningEvent.txt", vocab, son_to_fa_slot, use_label_encoder, domain="SearchScreeningEvent")
+
+    if use_label_encoder:
+        # update slot names into vocabulary
+        vocab.index_words(slot_list)
+
+    # binarize data
+    data["AddToPlaylist"] = binarize_data(AddToPlaylistData, vocab, "AddToPlaylist", use_label_encoder)
+    data["BookRestaurant"] = binarize_data(BookRestaurantData, vocab, "BookRestaurant", use_label_encoder)
+    data["GetWeather"] = binarize_data(GetWeatherData, vocab, "GetWeather", use_label_encoder)
+    data["PlayMusic"] = binarize_data(PlayMusicData, vocab, "PlayMusic", use_label_encoder)
+    data["RateBook"] = binarize_data(RateBookData, vocab, "RateBook", use_label_encoder)
+    data["SearchCreativeWork"] = binarize_data(SearchCreativeWorkData, vocab, "SearchCreativeWork", use_label_encoder)
+    data["SearchScreeningEvent"] = binarize_data(SearchScreeningEventData, vocab, "SearchScreeningEvent", use_label_encoder)
+
+    return data, vocab
+
