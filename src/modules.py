@@ -20,7 +20,7 @@ class Lstm(nn.Module):
         self.bidirection = params.bidirection
         self.freeze_emb = params.freeze_emb
         self.emb_file = params.emb_file
-
+        
         # embedding layer
         self.embedding = nn.Embedding(self.n_words, self.emb_dim, padding_idx=PAD_INDEX)
         # load embedding

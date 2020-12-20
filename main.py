@@ -46,13 +46,41 @@ def main(params):
     slu_trainer = SLUTrainer(params, coarse_slutagger, fine_predictor, sent_repre_generator=sent_repre_generator)
 
     for e in range(params.epoch):
+        loss_c_list = []
+        pbar = tqdm(enumerate(dataloader_tr), total=len(dataloader_tr))
         logger.info("============== epoch {} ==============".format(e+1))
+        if e < params.pretrained_epoch or e == 7 or e == 8 or e == 12 or e == 13 \
+        or e == 17 or e == 20:
+            if params.tr:
+                for i, (X, lengths, y_0, y_bin, y_final, y_dm, templates, tem_lengths) in pbar:
+                    X, lengths = X.cuda(), lengths.cuda()
+                    loss_chunking = slu_trainer.chunking_pretrain(X, lengths, y_0)
+                    loss_c_list.append(loss_chunking)
+                    pbar.set_description("(Epoch {}) LOSS CHUNKING:{:.4f}".format((e+1), np.mean(loss_c_list)))
+
+            else:
+                for i, (X, lengths, y_0, y_bin, y_final, y_dm) in pbar:           
+                    X, lengths = X.cuda(), lengths.cuda()
+                    loss_chunking = slu_trainer.chunking_pretrain(X, lengths, y_0)
+                    loss_c_list.append(loss_chunking)
+                    pbar.set_description("(Epoch {}) LOSS CHUNKING:{:.4f}".format((e+1), np.mean(loss_c_list)))
+
+            logger.info("============== Evaluate Epoch {} ==============".format(e+1))
+            bin_f1 = slu_trainer.chunking_eval(dataloader_val)
+            logger.info("Eval on dev set. Binary Slot-F1: {:.4f}".format(bin_f1))
+
+            bin_f1 = slu_trainer.chunking_eval(dataloader_test)
+            logger.info("Eval on test set. Binary Slot-F1: {:.4f}".format(bin_f1))
+
+            continue
+
         loss_bin_list, loss_slotname_list = [], []
         if params.tr:
             loss_tem0_list, loss_tem1_list = [], []
-        pbar = tqdm(enumerate(dataloader_tr), total=len(dataloader_tr))
+        
+        # record = int(len(dataloader_tr) / 4)
         if params.tr:
-            for i, (X, lengths, y_bin, y_final, y_dm, templates, tem_lengths) in pbar:
+            for i, (X, lengths, y_0, y_bin, y_final, y_dm, templates, tem_lengths) in pbar:
                 X, lengths, templates, tem_lengths = X.cuda(), lengths.cuda(), templates.cuda(), tem_lengths.cuda()
                 loss_bin, loss_slotname, loss_tem0, loss_tem1 = slu_trainer.train_step(X, lengths, y_bin, y_final, y_dm, templates=templates, tem_lengths=tem_lengths, epoch=e)
                 loss_bin_list.append(loss_bin)
@@ -62,7 +90,7 @@ def main(params):
 
                 pbar.set_description("(Epoch {}) LOSS BIN:{:.4f} LOSS SLOT:{:.4f} LOSS TEM0:{:.4f} LOSS TEM1:{:.4f}".format((e+1), np.mean(loss_bin_list), np.mean(loss_slotname_list), np.mean(loss_tem0_list), np.mean(loss_tem1_list)))
         else:
-            for i, (X, lengths, y_bin, y_final, y_dm) in pbar:
+            for i, (X, lengths, y_0, y_bin, y_final, y_dm) in pbar:           
                 X, lengths = X.cuda(), lengths.cuda()
                 loss_bin, loss_slotname = slu_trainer.train_step(X, lengths, y_bin, y_final, y_dm)
                 loss_bin_list.append(loss_bin)

@@ -1,5 +1,5 @@
 from src.dataloader import get_dataloader
-from src.datareader import y1_set, father_son_slot, domain2slot, father_keys
+from src.datareader import y1_set, father_son_slot, domain2slot, father_keys, y0_set
 from src.utils import init_experiment
 from src.model import *
 from config import get_params
@@ -14,6 +14,7 @@ logger = logging.getLogger()
 
 from conll2002_metrics import *
 import conll
+import conlleval
 
 
 
@@ -23,8 +24,12 @@ class SLUTrainer(object):
         self.coarse_tagger = coarse_tagger
         self.fine_tagger = fine_tagger
         self.lr = params.lr
+        self.lr_decay = params.lr_decay
         self.use_label_encoder = params.tr
         self.num_domain = params.num_domain
+        self.patience = params.patience
+        self.model_saved_path = os.path.join(self.params.dump_path, "best_model.pth")
+        self.opti_saved_path = os.path.join(self.params.dump_path, "opti.pth")
         if self.use_label_encoder:
             self.sent_repre_generator = sent_repre_generator
             self.loss_fn_mse = nn.MSELoss()
@@ -44,9 +49,59 @@ class SLUTrainer(object):
         self.loss_fn = nn.CrossEntropyLoss()
         self.early_stop = params.early_stop
         self.no_improvement_num = 0
+        self.trivial_num = 0
+        self.best_coarse_f1 = 0
         self.best_f1 = 0
 
         self.stop_training_flag = False
+
+    def chunking_pretrain(self, X, lengths, y_0):
+        self.coarse_tagger.train()
+        loss = self.coarse_tagger.chunking(X,y_0,False,lengths)
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+
+        return loss.item()
+
+    
+    def chunking_eval(self, dataloader):
+        self.coarse_tagger.eval()
+        binary_preds, binary_golds = [], []
+        pbar = tqdm(enumerate(dataloader), total=len(dataloader))
+        for i, (X, lengths, y_0, y_bin, y_final, y_dm) in pbar:
+            binary_golds.extend(y_0)
+
+            X, lengths = X.cuda(), lengths.cuda()
+            preds = self.coarse_tagger.chunking(X, y_0, True, lengths)
+           
+            binary_preds.extend(preds)
+        
+        binary_preds = np.concatenate(binary_preds, axis=0)
+        binary_preds = list(binary_preds)
+        binary_golds = np.concatenate(binary_golds, axis=0)
+        binary_golds = list(binary_golds)
+
+        _bin_pred = []
+        _bin_gold = []
+
+        temp = {"B":"B-A", "I":"I-A", "O":"O"}
+
+        for bin_pred, bin_gold in zip(binary_preds, binary_golds):
+
+            bin_slot_pred = y0_set[bin_pred]
+            bin_slot_gold = y0_set[bin_gold]
+
+
+            _bin_gold.append(temp[bin_slot_gold])
+            _bin_pred.append(temp[bin_slot_pred])
+        
+
+        (pre, rec, f1), d = conlleval.evaluate(_bin_gold, _bin_pred,logger)
+        return f1
+
+
+
 
     def train_step(self, X, lengths, y_bin, y_final, y_dm, templates=None, tem_lengths=None, epoch=None):
         self.coarse_tagger.train()
@@ -61,12 +116,13 @@ class SLUTrainer(object):
 
         self.optimizer.zero_grad()
         loss_bin.backward(retain_graph=True)
-        # self.optimizer.step()
-        # loss_slotname = torch.tensor(0).cuda()
-        
-        all_pred_list = []
-        all_gold_list = []
+        self.optimizer.step()
+
+
         for k in father_keys:
+
+            all_pred_list = []
+            all_gold_list = []
             v = father_son_slot[k]
             coarse_B_index = y1_set.index('B-'+k)
             coarse_I_index = y1_set.index('I-'+k)
@@ -76,15 +132,18 @@ class SLUTrainer(object):
             all_pred_list.extend(pred_fine_list)
             all_gold_list.extend(gold_fine_list)
 
-        loss_slotname = torch.tensor(0).cuda()
-        for pred_slotname_each_sample, gold_slotname_each_sample in zip(all_pred_list, all_gold_list):
-            assert pred_slotname_each_sample.size()[0] == gold_slotname_each_sample.size()[0]
-            loss_slotname = loss_slotname + self.loss_fn(pred_slotname_each_sample, gold_slotname_each_sample.cuda())
-            # self.optimizer.zero_grad()
-        
-        loss_slotname.backward(retain_graph=True)
-            # self.optimizer.step()
-        
+        # loss_slotname = torch.tensor(0).cuda()
+            for pred_slotname_each_sample, gold_slotname_each_sample in zip(all_pred_list, all_gold_list):
+                assert pred_slotname_each_sample.size()[0] == gold_slotname_each_sample.size()[0]
+                # loss_slotname = loss_slotname + self.loss_fn(pred_slotname_each_sample, gold_slotname_each_sample.cuda())
+                self.optimizer.zero_grad()
+                # print(pred_slotname_each_sample)
+                # print(gold_slotname_each_sample)
+                loss_slotname = self.loss_fn(pred_slotname_each_sample, gold_slotname_each_sample.cuda())
+                # print(loss_slotname)
+                loss_slotname.backward(retain_graph=True)
+                self.optimizer.step()
+        # print('-'*20)
         if self.use_label_encoder:
             templates_repre, input_repre = self.sent_repre_generator(templates, tem_lengths, lstm_hiddens, lengths)
 
@@ -94,11 +153,11 @@ class SLUTrainer(object):
             template2_loss = -1 * self.loss_fn_mse(templates_repre[:, 2, :], input_repre)
             input_repre.requires_grad = True
 
-            # self.optimizer.zero_grad()
+            self.optimizer.zero_grad()
             template0_loss.backward(retain_graph=True)
             template1_loss.backward(retain_graph=True)
             template2_loss.backward(retain_graph=True)
-            # self.optimizer.step()
+            self.optimizer.step()
 
             if epoch > 3:
                 templates_repre = templates_repre.detach()
@@ -107,14 +166,13 @@ class SLUTrainer(object):
                 input_loss2 = -1 * self.loss_fn_mse(input_repre, templates_repre[:, 2, :])
                 templates_repre.requires_grad = True
 
-                # self.optimizer.zero_grad()
+                self.optimizer.zero_grad()
                 input_loss0.backward(retain_graph=True)
                 input_loss1.backward(retain_graph=True)
                 input_loss2.backward(retain_graph=True)
-                # self.optimizer.step()
-        
-        self.optimizer.step()
-        
+                self.optimizer.step()
+
+
         if self.use_label_encoder:
             return loss_bin.item(), loss_slotname.item(), template0_loss.item(), template1_loss.item()
         else:
@@ -129,7 +187,7 @@ class SLUTrainer(object):
 
         pbar = tqdm(enumerate(dataloader), total=len(dataloader))
 
-        for i, (X, lengths, y_bin, y_final, y_dm) in pbar:
+        for i, (X, lengths,y_0,  y_bin, y_final, y_dm) in pbar:
             binary_golds.extend(y_bin)
             final_golds.extend(y_final)
 
@@ -232,32 +290,80 @@ class SLUTrainer(object):
         final_result = conll2002_measure(final_lines, True)
         final_f1 = final_result["fb1"]
 
-        conll.evaluate(_bin_golds, _bin_preds)
-        print('-'*20)
-        conll.evaluate(_final_golds, _final_preds)
+        # conll.evaluate(_bin_golds, _bin_preds)
+        conlleval.evaluate(_bin_golds, _bin_preds,logger)
+        logger.info('-'*20)
+        # conll.evaluate(_final_golds, _final_preds)
+        conlleval.evaluate(_final_golds, _final_preds,logger)
 
         # print(_bin_preds[:100])
         # print(_bin_golds[:20])
         # print(_final_preds[:100])
         # print(_final_golds[:20])
 
-        
+     
+
+
+
+
+
+
+
+
+
+
+
+
+
         if istestset == False:  # dev set
             if final_f1 > self.best_f1:
-            # if bin_f1 > self.best_f1:
+            # if bin_f1 > self.best_coarse_f1 or final_f1 > self.best_fine_f1:
                 self.best_f1 = final_f1
-                # self.best_f1 = bin_f1
+                # self.best_coarse_f1 = bin_f1
+                # self.best_fine_f1 = final_f1
                 self.no_improvement_num = 0
                 logger.info("Found better model!!")
                 self.save_model()
             else:
                 self.no_improvement_num += 1
                 logger.info("No better model found (%d/%d)" % (self.no_improvement_num, self.early_stop))
-            
-            if self.no_improvement_num >= self.early_stop:
-                self.stop_training_flag = True
+                if self.no_improvement_num == self.early_stop:
+                    logger.info("hit patience %d" % self.no_improvement_num)
+                    self.trivial_num += 1
+                    logger.info('hit # %d trial' % self.trivial_num)
+                    if self.trivial_num == self.patience:
+                        logger.info('early stop!')
+                        exit(0)
+                    
+                    # lr = [self.optimizer.param_groups[i]['lr'] * self.lr_decay for i in range(len(self.optimizer.param_groups))]
+                    lr = self.optimizer.param_groups[0]['lr'] * self.lr_decay
+                    
+                    logger.info("load previously best model and decay learning rate to %f" % lr)
+                    
+                    reloaded = torch.load(self.model_saved_path)
+                    self.coarse_tagger.load_state_dict(reloaded["coarse_tagger"])
+                    self.fine_tagger.load_state_dict(reloaded["fine_tagger"])
+                    if self.use_label_encoder:
+                        self.sent_repre_generator.load_state_dict(reloaded["sent_repre_generator"])
+                        self.sent_repre_generator = self.sent_repre_generator.cuda()
+
+                   
+                    self.coarse_tagger = self.coarse_tagger.cuda()
+                    self.fine_tagger = self.fine_tagger.cuda()
+
+
+                    logger.info('restore parameters of the optimizers')
+
+                    self.optimizer.load_state_dict(torch.load(self.opti_saved_path))
+
+                    for param_group in self.optimizer.param_groups:
+                        param_group['lr'] = lr
+
+                    self.no_improvement_num = 0
+
+
         
-        return bin_f1, final_f1, self.stop_training_flag
+        return bin_f1, final_f1, False
 
     def combine_binary_and_slotname_preds(self, dm_id_batch, binary_preds_batch, fine_preds_batch, coarse_fine_map):
         # print('\n')
@@ -318,17 +424,26 @@ class SLUTrainer(object):
         """
         save the best model
         """
-        saved_path = os.path.join(self.params.dump_path, "best_model.pth")
-        torch.save({
-            "coarse_tagger": self.coarse_tagger,
-            "fine_tagger": self.fine_tagger
-        }, saved_path)
-        logger.info("Best model has been saved to %s" % saved_path)
-    
+        model_saved_path = os.path.join(self.params.dump_path, "best_model.pth")
+        if self.use_label_encoder:
+            torch.save({
+                "coarse_tagger": self.coarse_tagger.state_dict(),
+                "fine_tagger": self.fine_tagger.state_dict(),
+                "sent_repre_generator": self.sent_repre_generator.state_dict()
+            }, model_saved_path)
+        else:
+            torch.save({
+                "coarse_tagger": self.coarse_tagger.state_dict(),
+                "fine_tagger": self.fine_tagger.state_dict(),
+            }, model_saved_path)
+        logger.info("Best model has been saved to %s" % model_saved_path)
 
-        
+        opti_saved_path = os.path.join(self.params.dump_path, "opti.pth")
+        torch.save(self.optimizer.state_dict(), opti_saved_path)
+        logger.info("Best model opti has been saved to %s" % opti_saved_path)
 
-
+        self.model_saved_path = model_saved_path
+        self.opti_saved_path = opti_saved_path
 
 def get_coarse_labels_for_domains():
     dm_coarse= {}

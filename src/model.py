@@ -13,10 +13,26 @@ class CoarseSLUTagger(nn.Module):
         self.num_binslot = params.num_binslot
         self.hidden_dim = params.hidden_dim * 2 if params.bidirection else params.hidden_dim
         self.linear = nn.Linear(self.hidden_dim, self.num_binslot)
+        self.linear_chunking = nn.Linear(self.hidden_dim, 3)
+        self.crf_layer_chunking = CRF(3)
         self.crf_layer = CRF(self.num_binslot)
         self.domain_coarse_mask = self.gen_emission_mask()
 
-        
+
+    def chunking(self,X,y,iseval, lengths):
+        bsz, seq_len = X.size()
+        lstm_hidden = self.lstm(X)  # (bsz, seq_len, hidden_dim)
+        prediction = self.linear_chunking(lstm_hidden)
+        padded_y = self.pad_label(lengths, y)
+        if iseval==False:
+            crf_loss = self.crf_layer_chunking.loss(prediction, padded_y)
+            return crf_loss
+        else:
+            pred = self.crf_layer_chunking(prediction)
+            pred = [ pred[i, :length].data.cpu().numpy() for i, length in enumerate(lengths) ]
+            return pred
+
+
     def forward(self, X, y_dm, iseval=False, lengths=None):
         """
         Input: 
@@ -38,7 +54,7 @@ class CoarseSLUTagger(nn.Module):
         
         all_mask = torch.cat(all_mask, 0)
         all_mask = all_mask.view(bsz, seq_len, -1)
-
+        all_mask = all_mask.float().cuda()
 
         if iseval == True:
 

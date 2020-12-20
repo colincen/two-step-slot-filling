@@ -11,17 +11,7 @@ slot_list = ['playlist', 'music_item', 'geographic_poi', 'facility',
 'rating_value', 'best_rating', 'rating_unit', 'year', 'party_size_number',
 'condition_description', 'condition_temperature']
 
-father_son_slot={
-    'person':['artist', 'party_size_description','playlist_owner'],
-    'location':['state','city','geographic_poi','object_location_type','location_name','country','poi'],
-    'special_name':['album','service','entity_name','playlist','music_item','track','movie_name','object_name',
-                    'served_dish','restaurant_name','cuisine'],
-    'common_name':['object_type', 'object_part_of_series_type','movie_type','restaurant_type','genre','facility',
-                'condition_description','condition_temperature'],
-    'number':['rating_value','best_rating','year','party_size_number','timeRange'],
-    'direction':['spatial_relation','current_location','object_select'],
-    'others':['rating_unit', 'sort']
-}
+
 # father_son_slot={
 #     'person':['artist', 'party_size_description','playlist_owner'],
 #     'location':['state','city','geographic_poi','country','poi'],
@@ -38,6 +28,8 @@ father_son_slot={
 # }
 
 father_keys = ['person', 'location', 'special_name', 'common_name', 'number', 'direction', 'others']
+
+y0_set = ['O','B','I']
 y1_set = ['O','B-person','I-person','B-location','I-location','B-special_name','I-special_name','B-common_name','I-common_name',
 'B-number','I-number','B-direction','I-direction','B-others','I-others']
 y2_set = ['O', 'B-playlist', 'I-playlist', 'B-music_item', 'I-music_item', 'B-geographic_poi', 
@@ -53,6 +45,18 @@ y2_set = ['O', 'B-playlist', 'I-playlist', 'B-music_item', 'I-music_item', 'B-ge
     'B-best_rating', 'B-rating_unit', 'B-year', 'B-party_size_number', 'B-condition_description', 'B-condition_temperature']
 domain_set = ["AddToPlaylist", "BookRestaurant", "GetWeather", "PlayMusic", "RateBook", "SearchCreativeWork", "SearchScreeningEvent"]
 
+
+father_son_slot={
+    'person':['artist','playlist_owner','party_size_description'],
+    'location':['state','city','geographic_poi','object_location_type','location_name','country','poi'],
+    'special_name':['album','service','entity_name','playlist','music_item','track','movie_name','object_name',
+                    'served_dish','restaurant_name','cuisine'],
+    'common_name':['object_type', 'object_part_of_series_type','movie_type','restaurant_type','genre','facility',
+                'condition_description','condition_temperature'],
+    'number':['rating_value','best_rating','year','party_size_number','timeRange'],
+    'direction':['spatial_relation','current_location','object_select'],
+    'others':['rating_unit', 'sort']
+}
 domain2slot = {
     "AddToPlaylist": ['music_item', 'playlist_owner', 'entity_name', 'playlist', 'artist'],
 
@@ -95,7 +99,7 @@ def get_father_slot():
     return res_dict
 
 def read_file(filepath, vocab, son_to_fa_slot, use_label_encoder, domain=None):
-    utter_list, y1_list, y2_list, template_list = [], [], [], []
+    utter_list, y0_list, y1_list, y2_list, template_list = [], [], [], [], []
     with open(filepath, "r") as f:
         for i, line in enumerate(f):
             line = line.strip()
@@ -109,14 +113,19 @@ def read_file(filepath, vocab, son_to_fa_slot, use_label_encoder, domain=None):
             vocab.index_words(tokens)
 
             l1_list = []
+            l0_list = []
             for l in l2_list:
                 if "B" in l:
                     l1_list.append("B-"+son_to_fa_slot[l[2:]])
+                    l0_list.append("B")
                 elif "I" in l:
                     l1_list.append("I-"+son_to_fa_slot[l[2:]])
+                    l0_list.append("I")
                 else:
-                    l1_list.append('O')
+                    l1_list.append("O")
+                    l0_list.append("O")
             y1_list.append(l1_list)
+            y0_list.append(l0_list)
 
             if use_label_encoder:
                 template_each_sample = [[], [], []]
@@ -145,24 +154,28 @@ def read_file(filepath, vocab, son_to_fa_slot, use_label_encoder, domain=None):
                 template_list.append(template_each_sample)
 
     if use_label_encoder:
-        data_dict = {"utter": utter_list, "y1": y1_list, "y2": y2_list, "template_list": template_list}
+        data_dict = {"utter": utter_list,"y0":y0_list, "y1": y1_list, "y2": y2_list, "template_list": template_list}
     else:
-        data_dict = {"utter": utter_list, "y1": y1_list, "y2": y2_list}
+        data_dict = {"utter": utter_list,"y0":y0_list, "y1": y1_list, "y2": y2_list}
     
     return data_dict, vocab
         
 def binarize_data(data, vocab, dm, use_label_encoder):
     if use_label_encoder:
-        data_bin = {"utter": [], "y1": [], "y2": [], "domains": [], "template_list": []}
+        data_bin = {"utter": [],"y0":[], "y1": [], "y2": [], "domains": [], "template_list": []}
     else:
-        data_bin = {"utter": [], "y1": [], "y2": [], "domains": []}
-    assert len(data_bin["utter"]) == len(data_bin["y1"]) == len(data_bin["y2"])
+        data_bin = {"utter": [],"y0":[], "y1": [], "y2": [], "domains": []}
+    assert len(data_bin["utter"]) == len(data_bin["y1"]) == len(data_bin["y2"]) == len(data_bin["y0"])
     dm_idx = domain_set.index(dm)
-    for utter_tokens, y1_list, y2_list in zip(data['utter'], data['y1'], data['y2']):
-        utter_bin, y1_bin, y2_bin = [], [], []
+    for utter_tokens, y0_list, y1_list, y2_list in zip(data['utter'], data['y0'], data['y1'], data['y2']):
+        utter_bin, y0_bin, y1_bin, y2_bin = [], [], [], []
         for token in utter_tokens:
             utter_bin.append(vocab.word2index[token])
         data_bin['utter'].append(utter_bin)
+
+        for y0 in y0_list:
+            y0_bin.append(y0_set.index(y0))
+        data_bin['y0'].append(y0_bin)
 
         for y1 in y1_list:
             y1_bin.append(y1_set.index(y1))
@@ -172,7 +185,7 @@ def binarize_data(data, vocab, dm, use_label_encoder):
             y2_bin.append(y2_set.index(y2))
         data_bin['y2'].append(y2_bin)
 
-        assert len(utter_bin) == len(y1_bin) == len(y2_bin)
+        assert len(utter_bin) == len(y1_bin) == len(y2_bin)== len(y0_bin)
 
         data_bin['domains'].append(dm_idx)
 
@@ -187,7 +200,7 @@ def binarize_data(data, vocab, dm, use_label_encoder):
     
     return data_bin
 
-def datareader(use_label_encoder=False, prefix_path='/data/sh/coachdata/'):
+def datareader(use_label_encoder=False, prefix_path='coachdata/'):
     logger.info("Loading and processing data ...")
 
     data = {"AddToPlaylist": {}, "BookRestaurant": {}, "GetWeather": {}, "PlayMusic": {}, "RateBook": {}, "SearchCreativeWork": {}, "SearchScreeningEvent": {}}
@@ -220,4 +233,28 @@ def datareader(use_label_encoder=False, prefix_path='/data/sh/coachdata/'):
     data["SearchScreeningEvent"] = binarize_data(SearchScreeningEventData, vocab, "SearchScreeningEvent", use_label_encoder)
 
     return data, vocab
+
+
+
+
+
+def queryexample(domain, slot, num):
+    vocab = Vocab()
+    son_to_fa_slot = get_father_slot()
+    prefix_path = '../coachdata/'
+    Data, vocab = read_file(prefix_path+"snips/"+domain+"/"+domain+".txt", vocab, son_to_fa_slot, use_label_encoder = False, domain=domain)
+    res_data = []
+    for i in range(len(Data['utter'])):
+        for k in Data['y2'][i]:
+            if slot in k:
+                res_data.append([Data['utter'][i], Data['y2'][i]])
+                break
+    return res_data[:num]
+
+# res = queryexample('RateBook', 'object_part_of_series_type', 20)
+# for i in res:
+#     print(i)
+    
+
+
 
