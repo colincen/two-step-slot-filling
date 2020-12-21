@@ -1,6 +1,6 @@
-export CUDA_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES=1
 
-python main.py --exp_name coach_chunk  --exp_id sse_0 --bidirection --freeze_emb  --tgt_dm SearchScreeningEvent 
+python main.py --exp_name  coach_encode_slotname  --exp_id sse_0 --bidirection --freeze_emb  --tgt_dm SearchScreeningEvent 
 
 
 

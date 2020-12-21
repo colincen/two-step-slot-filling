@@ -30,10 +30,12 @@ def main(params):
 
     dataloader_tr, dataloader_val, dataloader_test, vocab = get_dataloader(params.tgt_dm, params.batch_size, params.tr, params.n_samples)
 
-    coarse_slutagger = CoarseSLUTagger(params, vocab)
+    dm_coarse = get_coarse_labels_for_domains()
+    
+    coarse_slutagger = CoarseSLUTagger(params, vocab, dm_coarse)
 
     coarse_slutagger = coarse_slutagger.cuda()
-    dm_coarse = get_coarse_labels_for_domains()
+    
 
     fine_predictor = FinePredictor(params, dm_coarse)
     fine_predictor = fine_predictor.cuda()
@@ -49,30 +51,6 @@ def main(params):
         loss_c_list = []
         pbar = tqdm(enumerate(dataloader_tr), total=len(dataloader_tr))
         logger.info("============== epoch {} ==============".format(e+1))
-        if e < params.pretrained_epoch or e == 7 or e == 8 or e == 12 or e == 13 \
-        or e == 17 or e == 20:
-            if params.tr:
-                for i, (X, lengths, y_0, y_bin, y_final, y_dm, templates, tem_lengths) in pbar:
-                    X, lengths = X.cuda(), lengths.cuda()
-                    loss_chunking = slu_trainer.chunking_pretrain(X, lengths, y_0)
-                    loss_c_list.append(loss_chunking)
-                    pbar.set_description("(Epoch {}) LOSS CHUNKING:{:.4f}".format((e+1), np.mean(loss_c_list)))
-
-            else:
-                for i, (X, lengths, y_0, y_bin, y_final, y_dm) in pbar:           
-                    X, lengths = X.cuda(), lengths.cuda()
-                    loss_chunking = slu_trainer.chunking_pretrain(X, lengths, y_0)
-                    loss_c_list.append(loss_chunking)
-                    pbar.set_description("(Epoch {}) LOSS CHUNKING:{:.4f}".format((e+1), np.mean(loss_c_list)))
-
-            logger.info("============== Evaluate Epoch {} ==============".format(e+1))
-            bin_f1 = slu_trainer.chunking_eval(dataloader_val)
-            logger.info("Eval on dev set. Binary Slot-F1: {:.4f}".format(bin_f1))
-
-            bin_f1 = slu_trainer.chunking_eval(dataloader_test)
-            logger.info("Eval on test set. Binary Slot-F1: {:.4f}".format(bin_f1))
-
-            continue
 
         loss_bin_list, loss_slotname_list = [], []
         if params.tr:
@@ -90,7 +68,7 @@ def main(params):
 
                 pbar.set_description("(Epoch {}) LOSS BIN:{:.4f} LOSS SLOT:{:.4f} LOSS TEM0:{:.4f} LOSS TEM1:{:.4f}".format((e+1), np.mean(loss_bin_list), np.mean(loss_slotname_list), np.mean(loss_tem0_list), np.mean(loss_tem1_list)))
         else:
-            for i, (X, lengths, y_0, y_bin, y_final, y_dm) in pbar:           
+            for i, (X, lengths, y_0, y_bin, y_final, y_dm) in pbar:       
                 X, lengths = X.cuda(), lengths.cuda()
                 loss_bin, loss_slotname = slu_trainer.train_step(X, lengths, y_bin, y_final, y_dm)
                 loss_bin_list.append(loss_bin)
@@ -111,71 +89,6 @@ def main(params):
 
         if stop_training_flag == True:
             break
-
-
-    # optimizer = torch.optim.AdamW(coarse_slutagger.parameters(),lr=0.0001)
-
-   
-
-    # pbar = tqdm(enumerate(dataloader_tr), total=len(dataloader_tr))
-    # for i, (X, lengths, y_bin, y_final, y_dm, templates, tem_lengths) in pbar:
-    #     X, lengths, templates, tem_lengths = X.cuda(), lengths.cuda(), templates.cuda(), tem_lengths.cuda()
-
-
-    #     bin_preds, lstm_hiddens = coarse_slutagger(X)
-    #     loss_bin = coarse_slutagger.crf_loss(bin_preds, lengths, y_bin)
-    #     optimizer.zero_grad()
-    #     loss_bin.backward(retain_graph=True)
-    #     # optimizer.step()
-    #     loss_fn = nn.CrossEntropyLoss()
-    #     # slot_list = []
-    #     # for k, v in domain2slot.items():
-    #     #     slot_list.extend(v)
-    #     all_pred_list = []
-    #     all_gold_list = []
-    #     for k,v in father_son_slot.items():
-    #         coarse_B_index = y1_set.index('B-'+k)
-    #         coarse_I_index = y1_set.index('I-'+k)
-    #         pred_fine_list, gold_fine_list = fine_predictor(y_dm,  k, lstm_hiddens, coarse_B_index=coarse_B_index, coarse_I_index=coarse_I_index,binary_golds=y_bin, final_golds = y_final)
-    #         pred_fine_list = [temp for temp in pred_fine_list if temp is not None]
-
-    #         all_pred_list.extend(pred_fine_list)
-    #         all_gold_list.extend(gold_fine_list)
-
-    #     loss_slotname = torch.tensor(0).cuda()
-    #     for pred_slotname_each_sample, gold_slotname_each_sample in zip(all_pred_list, all_gold_list):
-    #         assert pred_slotname_each_sample.size()[0] == gold_slotname_each_sample.size()[0]
-    #         loss_slotname = loss_slotname + loss_fn(pred_slotname_each_sample, gold_slotname_each_sample.cuda())
-    #         # optimizer.zero_grad()
-        
-    #     loss_slotname.backward(retain_graph=True)
-    #     # optimizer.step()
-
-
-    #     templates_repre, input_repre = sent_repre_generator(templates, tem_lengths, lstm_hiddens, lengths)
-
-    #     input_repre = input_repre.detach()
-    #     template0_loss = loss_fn_mse(templates_repre[:, 0, :], input_repre)
-    #     template1_loss = -1 * loss_fn_mse(templates_repre[:, 1, :], input_repre)
-    #     template2_loss = -1 * loss_fn_mse(templates_repre[:, 2, :], input_repre)
-    #     input_repre.requires_grad = True
-
-    #     # self.optimizer.zero_grad()
-    #     template0_loss.backward(retain_graph=True)
-    #     template1_loss.backward(retain_graph=True)
-    #     template2_loss.backward(retain_graph=True)
-    #     optimizer.step()
-
-
-    #     print('ok')
-
-        # pbar.set_description("LOSS BIN:{:.4f} LOSS SLOT:{:.4f} ".format(loss_bin.detach().cpu().numpy(), loss_slotname.detach().cpu().numpy()))
-
-
-        # print(bin_preds.size())
-        # print(lstm_hiddens.size())
-            # loss_bin, loss_slotname, loss_tem0, loss_tem1 = slu_trainer.train_step(X, 
-            # lengths, y_bin, y_final, y_dm, templates=templates, tem_lengths=tem_lengths, epoch=e)
 
 
 

@@ -200,7 +200,7 @@ def binarize_data(data, vocab, dm, use_label_encoder):
     
     return data_bin
 
-def datareader(use_label_encoder=False, prefix_path='coachdata/'):
+def datareader(use_label_encoder=False, prefix_path='/home/sh/data/coachdata/'):
     logger.info("Loading and processing data ...")
 
     data = {"AddToPlaylist": {}, "BookRestaurant": {}, "GetWeather": {}, "PlayMusic": {}, "RateBook": {}, "SearchCreativeWork": {}, "SearchScreeningEvent": {}}

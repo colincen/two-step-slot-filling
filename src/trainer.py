@@ -55,53 +55,6 @@ class SLUTrainer(object):
 
         self.stop_training_flag = False
 
-    def chunking_pretrain(self, X, lengths, y_0):
-        self.coarse_tagger.train()
-        loss = self.coarse_tagger.chunking(X,y_0,False,lengths)
-        self.optimizer.zero_grad()
-        loss.backward()
-        self.optimizer.step()
-
-        return loss.item()
-
-    
-    def chunking_eval(self, dataloader):
-        self.coarse_tagger.eval()
-        binary_preds, binary_golds = [], []
-        pbar = tqdm(enumerate(dataloader), total=len(dataloader))
-        for i, (X, lengths, y_0, y_bin, y_final, y_dm) in pbar:
-            binary_golds.extend(y_0)
-
-            X, lengths = X.cuda(), lengths.cuda()
-            preds = self.coarse_tagger.chunking(X, y_0, True, lengths)
-           
-            binary_preds.extend(preds)
-        
-        binary_preds = np.concatenate(binary_preds, axis=0)
-        binary_preds = list(binary_preds)
-        binary_golds = np.concatenate(binary_golds, axis=0)
-        binary_golds = list(binary_golds)
-
-        _bin_pred = []
-        _bin_gold = []
-
-        temp = {"B":"B-A", "I":"I-A", "O":"O"}
-
-        for bin_pred, bin_gold in zip(binary_preds, binary_golds):
-
-            bin_slot_pred = y0_set[bin_pred]
-            bin_slot_gold = y0_set[bin_gold]
-
-
-            _bin_gold.append(temp[bin_slot_gold])
-            _bin_pred.append(temp[bin_slot_pred])
-        
-
-        (pre, rec, f1), d = conlleval.evaluate(_bin_gold, _bin_pred,logger)
-        return f1
-
-
-
 
     def train_step(self, X, lengths, y_bin, y_final, y_dm, templates=None, tem_lengths=None, epoch=None):
         self.coarse_tagger.train()
@@ -112,11 +65,16 @@ class SLUTrainer(object):
         
         bin_preds, lstm_hiddens = self.coarse_tagger(X, y_dm)
         
+
+
         loss_bin = self.coarse_tagger.crf_loss(bin_preds, lengths, y_bin)
 
         self.optimizer.zero_grad()
         loss_bin.backward(retain_graph=True)
         self.optimizer.step()
+
+
+        y_label_embedding = self.coarse_tagger.get_labelembedding(lstm_hiddens, lengths, y_dm)
 
 
         for k in father_keys:
@@ -126,7 +84,7 @@ class SLUTrainer(object):
             v = father_son_slot[k]
             coarse_B_index = y1_set.index('B-'+k)
             coarse_I_index = y1_set.index('I-'+k)
-            pred_fine_list, gold_fine_list = self.fine_tagger(y_dm,  k, lstm_hiddens, coarse_B_index=coarse_B_index, coarse_I_index=coarse_I_index,binary_golds=y_bin, final_golds = y_final)
+            pred_fine_list, gold_fine_list = self.fine_tagger(y_dm,  k, lstm_hiddens, y_label_embedding, coarse_B_index=coarse_B_index, coarse_I_index=coarse_I_index,binary_golds=y_bin, final_golds = y_final)
             pred_fine_list = [temp for temp in pred_fine_list if temp is not None]
 
             all_pred_list.extend(pred_fine_list)
@@ -182,6 +140,8 @@ class SLUTrainer(object):
         self.coarse_tagger.eval()
         self.fine_tagger.eval()
 
+
+
         binary_preds, binary_golds = [], []
         final_preds, final_golds = [], []
 
@@ -193,6 +153,10 @@ class SLUTrainer(object):
 
             X, lengths = X.cuda(), lengths.cuda()
             bin_preds_batch, lstm_hidden = self.coarse_tagger(X, y_dm, iseval=True)
+
+            y_label_embedding = self.coarse_tagger.get_labelembedding(lstm_hidden, lengths, y_dm)
+
+
             bin_preds_batch = self.coarse_tagger.crf_decode(bin_preds_batch, lengths)
            
             binary_preds.extend(bin_preds_batch)
@@ -204,7 +168,7 @@ class SLUTrainer(object):
                 coarse_B_index = y1_set.index('B-'+k)
                 coarse_I_index = y1_set.index('I-'+k)
                 # print(k)
-                pred_fine_list = self.fine_tagger(y_dm,  k, lstm_hidden, coarse_B_index=coarse_B_index, coarse_I_index=coarse_I_index, binary_preditions=bin_preds_batch)
+                pred_fine_list = self.fine_tagger(y_dm,  k, lstm_hidden, y_label_embedding, coarse_B_index=coarse_B_index, coarse_I_index=coarse_I_index, binary_preditions=bin_preds_batch)
                 # print(pred_fine_list)
                 # print('-'*10)
                 

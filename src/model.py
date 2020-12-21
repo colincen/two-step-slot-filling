@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 from torch import nn
 from torch.nn import functional as F
@@ -6,31 +7,23 @@ from src.utils import load_embedding_from_npy, load_embedding_from_pkl
 from src.datareader import SLOT_PAD, y2_set, domain_set, domain2slot, y1_set,father_son_slot, father_keys
 
 class CoarseSLUTagger(nn.Module):
-    def __init__(self, params, vocab):
+    def __init__(self, params, vocab, coarse_fine_map):
         super(CoarseSLUTagger, self).__init__()
         
         self.lstm = Lstm(params, vocab)
         self.num_binslot = params.num_binslot
         self.hidden_dim = params.hidden_dim * 2 if params.bidirection else params.hidden_dim
+        self.atten_w = nn.Parameter(torch.Tensor(self.hidden_dim, params.emb_dim))
+        
         self.linear = nn.Linear(self.hidden_dim, self.num_binslot)
-        self.linear_chunking = nn.Linear(self.hidden_dim, 3)
-        self.crf_layer_chunking = CRF(3)
         self.crf_layer = CRF(self.num_binslot)
         self.domain_coarse_mask = self.gen_emission_mask()
+        self.example_emb = load_embedding_from_pkl(params.example_emb_file)
+        self.slot_embs = load_embedding_from_pkl(params.slot_emb_file)
+        self.coarse_fine_map = coarse_fine_map
 
+        nn.init.xavier_normal_(self.atten_w)
 
-    def chunking(self,X,y,iseval, lengths):
-        bsz, seq_len = X.size()
-        lstm_hidden = self.lstm(X)  # (bsz, seq_len, hidden_dim)
-        prediction = self.linear_chunking(lstm_hidden)
-        padded_y = self.pad_label(lengths, y)
-        if iseval==False:
-            crf_loss = self.crf_layer_chunking.loss(prediction, padded_y)
-            return crf_loss
-        else:
-            pred = self.crf_layer_chunking(prediction)
-            pred = [ pred[i, :length].data.cpu().numpy() for i, length in enumerate(lengths) ]
-            return pred
 
 
     def forward(self, X, y_dm, iseval=False, lengths=None):
@@ -94,6 +87,60 @@ class CoarseSLUTagger(nn.Module):
 
         return crf_loss
 
+    def get_labelembedding(self, lstm_hiddens, lengths, y_dm):
+        res_emb = []
+
+
+        batch_example_emb = []
+
+        for i in range(len(y_dm)):
+            one_sent_lstm_hidden = lstm_hiddens[i]
+            one_sent_length = lengths[i]
+            dm = y_dm[i].item()
+            domain_example_embs = self.example_emb[domain_set[dm]]
+            domain_example_embs = torch.tensor(domain_example_embs)
+            domain_example_embs = domain_example_embs.mean(-1)
+            domain_example_embs =  domain_example_embs.float().cuda()
+            one_sent_lstm_hidden = one_sent_lstm_hidden[:one_sent_length, :]
+            atten_temp = torch.matmul(one_sent_lstm_hidden, self.atten_w)
+            atten_temp = torch.matmul(atten_temp, domain_example_embs.transpose(0, 1))
+            alpha = torch.softmax(atten_temp, -1)
+            sum_emb = torch.matmul(one_sent_lstm_hidden.transpose(0,1), alpha).transpose(0, 1)
+            batch_example_emb.append(sum_emb)
+
+        # print(batch_example_emb[0].size())
+        # print(self.coarse_fine_map)
+
+        # print(self.slot_embs)
+
+        for i in range(len(batch_example_emb)):
+            temp_dict = {}
+            for fa in father_keys:
+                temp_dict[fa] = []
+                dm = domain_set[y_dm[i].item()]
+                for j in range(len(self.coarse_fine_map[dm][fa])):
+                    slot_name = self.coarse_fine_map[dm][fa][j]
+                    slot_id_in_domain = domain2slot[dm].index(slot_name)
+                    slot_example_emb = batch_example_emb[i][slot_id_in_domain]
+
+                    
+                    slot_name_emb = self.slot_embs[dm][slot_id_in_domain]
+                    slot_name_emb = torch.tensor(slot_name_emb).float().cuda()
+
+                    slot_coarse_emb = torch.zeros(len(father_keys)).float().cuda()
+                    fa_id = father_keys.index(fa)
+                    slot_coarse_emb[fa_id] = 1
+
+                    temp_dict[fa].append(slot_example_emb)
+
+            res_emb.append(temp_dict)
+
+        return res_emb 
+                    
+
+
+
+
     def pad_label(self, lengths, y):
         bsz = len(lengths)
         max_len = torch.max(lengths)
@@ -127,10 +174,7 @@ class CoarseSLUTagger(nn.Module):
             mask[i]= torch.tensor(temp).cuda()
         
         return mask
-                
-
-        
-
+                    
 class FinePredictor(nn.Module):
     def __init__(self, params, coarse_fine_map):
         super(FinePredictor, self).__init__()
@@ -143,10 +187,6 @@ class FinePredictor(nn.Module):
         
         self.slot_embs = load_embedding_from_pkl(params.slot_emb_file)
         self.slot_embs_list = self.get_emb_for_coarse_fine_map(domain2slot, self.slot_embs, coarse_fine_map)
-        # for k, v in self.slot_embs.items():
-        #     self.slot_embs_list.extend(v)
-        # self.slot_embs_list = torch.tensor(self.slot_embs_list)
-        # self.slot_embs_list = self.slot_embs_list.cuda()
         self.coarse_fine_map = coarse_fine_map
     
 
@@ -171,7 +211,7 @@ class FinePredictor(nn.Module):
         return res_emb
 
 
-    def forward(self, domains, cur_coarse, hidden_layers, coarse_B_index,coarse_I_index, binary_preditions=None, binary_golds=None, final_golds=None):
+    def forward(self, domains, cur_coarse, hidden_layers, y_label_embedding, coarse_B_index,coarse_I_index, binary_preditions=None, binary_golds=None, final_golds=None):
         binary_labels = binary_golds if binary_golds is not None else binary_preditions
         feature_list = []
         gold_slotname_list = []
@@ -234,6 +274,9 @@ class FinePredictor(nn.Module):
                         gold_slotname_each_sample.append(coarse_fine_map[domain_name][cur_coarse].index(slot_name))
 
 
+                        # gold_slotname_each_sample.append(coarse_fine_map[domain_name][cur_coarse].index(slot_name))
+
+
                         # if slot_name in 
                     # if final_golds is not None:
                     #     slot_name = y2_set[final_gold_each_sample[prev_index]].split("-")[1]
@@ -283,8 +326,22 @@ class FinePredictor(nn.Module):
             # print(cur_coarse)
             # if len(self.slot_embs_list[domain_name][cur_coarse]) != 0:
             if len(feature_list[i]) != 0 and len(self.slot_embs_list[domain_name][cur_coarse]) != 0:
-                slot_embs_based_domain = torch.FloatTensor(self.slot_embs_list[domain_name][cur_coarse]).transpose(0,1).cuda()
+                # slot_embs_based_domain = torch.FloatTensor(self.slot_embs_list[domain_name][cur_coarse]).transpose(0,1).cuda()
+
+                temp_label_embedding = [t.unsqueeze(1) for t in y_label_embedding[i][cur_coarse]]
+                temp_label_embedding = torch.cat(temp_label_embedding, 1)
+                slot_embs_based_domain = temp_label_embedding
+                # print(slot_embs_based_domain.size())
+                # print(temp_label_embedding.size())
+
+                # print('-'*20)
+                
                 feature_each_sample = feature_list[i]
+
+
+                # print(feature_each_sample.size())
+                # print(slot_embs_based_domain.size())
+
                 # print(feature_each_sample)
                 # print(slot_embs_based_domain)
                 pred_slotname_each_sample = torch.matmul(feature_each_sample, slot_embs_based_domain)
