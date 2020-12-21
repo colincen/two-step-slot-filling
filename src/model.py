@@ -131,7 +131,13 @@ class CoarseSLUTagger(nn.Module):
                     fa_id = father_keys.index(fa)
                     slot_coarse_emb[fa_id] = 1
 
-                    temp_dict[fa].append(slot_example_emb)
+                    emb = torch.cat([slot_example_emb, slot_name_emb], 0)
+
+
+                    temp_dict[fa].append(emb)
+
+                    # temp_dict[fa].append(slot_example_emb)
+
 
             res_emb.append(temp_dict)
 
@@ -188,7 +194,11 @@ class FinePredictor(nn.Module):
         self.slot_embs = load_embedding_from_pkl(params.slot_emb_file)
         self.slot_embs_list = self.get_emb_for_coarse_fine_map(domain2slot, self.slot_embs, coarse_fine_map)
         self.coarse_fine_map = coarse_fine_map
-    
+
+
+        self.similarity_W = nn.Parameter(torch.Tensor(self.input_dim*2, params.emb_dim))
+        nn.init.xavier_normal_(self.similarity_W)
+        
 
     def get_emb_for_coarse_fine_map(self, domain2slot, slot_embs, coarse_fine_map):
         
@@ -339,12 +349,25 @@ class FinePredictor(nn.Module):
                 feature_each_sample = feature_list[i]
 
 
+
+
+                temp = torch.matmul(slot_embs_based_domain.transpose(0, 1), self.similarity_W)
+                temp = torch.matmul(temp, feature_each_sample.transpose(0,1)).transpose(0, 1)
+                pred_slotname_each_sample = temp
+                # print(temp.size())
+
                 # print(feature_each_sample.size())
                 # print(slot_embs_based_domain.size())
 
                 # print(feature_each_sample)
                 # print(slot_embs_based_domain)
-                pred_slotname_each_sample = torch.matmul(feature_each_sample, slot_embs_based_domain)
+                # print(feature_each_sample.size())
+
+                # print(slot_embs_based_domain.size())
+
+                # print('-'*20)
+                # pred_slotname_each_sample = torch.matmul(feature_each_sample, slot_embs_based_domain)
+                # print(pred_slotname_each_sample.size())
             else:
                 pred_slotname_each_sample = None
             
