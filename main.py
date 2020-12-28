@@ -6,10 +6,10 @@ from src.trainer import SLUTrainer
 from config import get_params
 from tqdm import tqdm
 from preprocess.gen_embeddings_for_slu import *
-# gen_slot_embs_based_on_each_domain('/data/sh/glove.6B.300d.txt')
-# combine_word_with_char_embs_for_slot("/data/sh/coachdata/snips/emb/slot_embs_based_on_each_domain.dict")
-# combine_word_with_char_embs_for_vocab("/data/sh/coachdata/snips/emb/slu_embs.npy")
-# add_slot_embs_to_slu_embs("/data/sh/coachdata/snips/emb/slot_word_char_embs_based_on_each_domain.dict", "/data/sh/coachdata/snips/emb/slu_word_char_embs.npy")
+# gen_slot_embs_based_on_each_domain('/home/sh/data/glove.6B.300d.txt')
+# combine_word_with_char_embs_for_slot("/home/sh/data/coachdata/snips/emb/slot_embs_based_on_each_domain.dict")
+# combine_word_with_char_embs_for_vocab("/home/sh/data/coachdata/snips/emb/slu_embs.npy")
+# add_slot_embs_to_slu_embs("/home/sh/data/coachdata/snips/emb/slot_word_char_embs_based_on_each_domain.dict", "/home/sh/data/coachdata/snips/emb/slu_word_char_embs.npy")
 
 def get_coarse_labels_for_domains():
     dm_coarse= {}
@@ -45,7 +45,7 @@ def main(params):
     sent_repre_generator = SentRepreGenerator(params, vocab)
     sent_repre_generator = sent_repre_generator.cuda()
 
-    slu_trainer = SLUTrainer(params, coarse_slutagger, fine_predictor, sent_repre_generator=sent_repre_generator)
+    slu_trainer = SLUTrainer(params,vocab, coarse_slutagger, fine_predictor, sent_repre_generator=sent_repre_generator)
 
     for e in range(params.epoch):
         loss_c_list = []

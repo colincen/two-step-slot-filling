@@ -12,20 +12,16 @@ slot_list = ['playlist', 'music_item', 'geographic_poi', 'facility',
 'condition_description', 'condition_temperature']
 
 
-# father_son_slot={
-#     'person':['artist', 'party_size_description','playlist_owner'],
-#     'location':['state','city','geographic_poi','country','poi'],
-#     'special_name':['album','service','entity_name','playlist','music_item',
-#                     'track','movie_name','object_name',
-#                     'served_dish','restaurant_name','cuisine'],
-#     'common_name':['object_type', 'object_part_of_series_type','movie_type',
-#                     'restaurant_type','genre','facility',
-#                 'condition_description','condition_temperature',
-#                 'object_location_type','location_name'],
-#     'number':['rating_value','best_rating','year','party_size_number','timeRange'],
-#     'direction':['spatial_relation','current_location','object_select'],
-#     'others':['rating_unit', 'sort']
-# }
+slot2desp = {'playlist': 'playlist', 'music_item': 'music item', 'geographic_poi': 'geographic position',
+ 'facility': 'facility', 'movie_name': 'movie name', 'location_name': 'location name', 'restaurant_name': 'restaurant name',
+  'track': 'track', 'restaurant_type': 'restaurant type', 'object_part_of_series_type': 'series', 'country': 'country', 
+  'service': 'service', 'poi': 'position', 'party_size_description': 'person', 'served_dish': 'served dish', 'genre': 'genre', 
+  'current_location': 'current location', 'object_select': 'this current', 'album': 'album', 'object_name': 'object name',
+   'state': 'location', 'sort': 'type', 'object_location_type': 'location type', 'movie_type': 'movie type',
+    'spatial_relation': 'spatial relation', 'artist': 'artist', 'cuisine': 'cuisine', 'entity_name': 'entity name',
+     'object_type': 'object type', 'playlist_owner': 'owner', 'timeRange': 'time range', 'city': 'city', 'rating_value': 'rating value',
+      'best_rating': 'best rating', 'rating_unit': 'rating unit', 'year': 'year', 'party_size_number': 'number', 
+      'condition_description': 'weather', 'condition_temperature': 'temperature'}
 
 father_keys = ['person', 'location', 'special_name', 'common_name', 'number', 'direction', 'others']
 
@@ -158,6 +154,19 @@ def read_file(filepath, vocab, son_to_fa_slot, use_label_encoder, domain=None):
     else:
         data_dict = {"utter": utter_list,"y0":y0_list, "y1": y1_list, "y2": y2_list}
     
+
+
+    # for i,slot in enumerate(slot_list):
+    #     if slot == 'timeRange':
+    #         vocab.index_words(['time','range'])
+    #         continue
+    #     slot_l = slot.split('_')
+    #     vocab.index_words(slot_l)
+
+    # print(vocab.word2index['object'])
+    # print(vocab.word2index['geographic'])
+
+
     return data_dict, vocab
         
 def binarize_data(data, vocab, dm, use_label_encoder):
@@ -193,6 +202,10 @@ def binarize_data(data, vocab, dm, use_label_encoder):
         for template_each_sample in data['template_list']:
             template_each_sample_bin = [[],[],[]]
             for tok1, tok2, tok3 in zip(template_each_sample[0], template_each_sample[1], template_each_sample[2]):
+                # print(tok1)
+                # print(tok2)
+                # print(tok3)
+                # print('-'*10)
                 template_each_sample_bin[0].append(vocab.word2index[tok1])
                 template_each_sample_bin[1].append(vocab.word2index[tok2])
                 template_each_sample_bin[2].append(vocab.word2index[tok3])
@@ -222,6 +235,10 @@ def datareader(use_label_encoder=False, prefix_path='/home/sh/data/coachdata/'):
     if use_label_encoder:
         # update slot names into vocabulary
         vocab.index_words(slot_list)
+        values = [t.split() for k, t in slot2desp.items()]
+        for l in values:
+            vocab.index_words(l)
+        
 
     # binarize data
     data["AddToPlaylist"] = binarize_data(AddToPlaylistData, vocab, "AddToPlaylist", use_label_encoder)

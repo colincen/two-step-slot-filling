@@ -85,6 +85,9 @@ class CoarseSLUTagger(nn.Module):
 
         return crf_loss
 
+    def encode_slot_name(self, inputs):
+        pass
+    
     def get_labelembedding(self, lstm_hiddens, lengths, y_dm):
         res_emb = []
         
@@ -128,12 +131,12 @@ class CoarseSLUTagger(nn.Module):
                     fa_id = father_keys.index(fa)
                     slot_coarse_emb[fa_id] = 1
 
-                    emb = torch.cat([slot_example_emb, slot_name_emb, slot_coarse_emb], 0)
+                    # emb = torch.cat([slot_example_emb, slot_name_emb, slot_coarse_emb], 0)
 
 
-                    temp_dict[fa].append(emb)
+                    # temp_dict[fa].append(emb)
 
-                    # temp_dict[fa].append(slot_example_emb)
+                    temp_dict[fa].append(slot_name_emb)
 
 
             res_emb.append(temp_dict)
@@ -189,7 +192,7 @@ class FinePredictor(nn.Module):
         self.coarse_fine_map = coarse_fine_map
 
 
-        self.similarity_W = nn.Parameter(torch.Tensor(self.input_dim*2 + len(father_keys), params.emb_dim))
+        self.similarity_W = nn.Parameter(torch.Tensor(400, params.emb_dim))
         nn.init.xavier_normal_(self.similarity_W)
         
     def get_emb_for_coarse_fine_map(self, domain2slot, slot_embs, coarse_fine_map):

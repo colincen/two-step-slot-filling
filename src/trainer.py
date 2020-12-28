@@ -1,5 +1,5 @@
 from src.dataloader import get_dataloader
-from src.datareader import y1_set, father_son_slot, domain2slot, father_keys, y0_set
+from src.datareader import y1_set, father_son_slot, domain2slot, father_keys, y0_set, slot2desp
 from src.utils import init_experiment
 from src.model import *
 from config import get_params
@@ -19,7 +19,7 @@ import conlleval
 
 
 class SLUTrainer(object):
-    def __init__(self, params, coarse_tagger, fine_tagger, sent_repre_generator=None):
+    def __init__(self, params, vocab, coarse_tagger, fine_tagger, sent_repre_generator=None):
         self.params = params
         self.coarse_tagger = coarse_tagger
         self.fine_tagger = fine_tagger
@@ -28,6 +28,7 @@ class SLUTrainer(object):
         self.use_label_encoder = params.tr
         self.num_domain = params.num_domain
         self.patience = params.patience
+        self.vocab = vocab
         self.model_saved_path = os.path.join(self.params.dump_path, "best_model.pth")
         self.opti_saved_path = os.path.join(self.params.dump_path, "opti.pth")
         if self.use_label_encoder:
@@ -63,6 +64,27 @@ class SLUTrainer(object):
         if self.use_label_encoder:
             self.sent_repre_generator.train()
         
+        ########
+
+        # concat X and slot_emb
+        for i, domain in enumerate(y_dm):
+
+            for fa in father_keys:
+
+                dm = domain_set[domain.item()]
+
+                for j in range(len(self.coarse_tagger.coarse_fine_map[dm][fa])):
+                    slot_name = self.coarse_tagger.coarse_fine_map[dm][fa][j]
+                    slot_name_description = slot2desp[slot_name]
+                    for tok in slot_name_description.split():
+                        idx = self.vocab.word2index[tok]
+
+
+
+
+
+        ########
+
         bin_preds, lstm_hiddens = self.coarse_tagger(X, y_dm)
         
 

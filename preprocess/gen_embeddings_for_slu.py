@@ -26,10 +26,9 @@ domain2slot = {
 
 
 def gen_oov_words():
-    with open("/data/sh/coachdata/snips/emb/oov_words.txt", "w") as f:
+    with open("/home/sh/data/coachdata/snips/emb/oov_words.txt", "w") as f:
         for oov in oov_words:
             f.write(oov + "\n")
-
 
 def gen_embs_for_vocab():
     from src.datareader import datareader
@@ -39,9 +38,8 @@ def gen_embs_for_vocab():
     logger = init_experiment(params, logger_filename=params.logger_filename)
 
     _, vocab = datareader()
-    embedding = load_embedding(vocab, 300, "/data/sh/glove.6B.300d.txt", "/data/sh/coachdata/snips/emb/oov_embs.txt")
-    np.save("/data/sh/coachdata/snips/emb/slu_embs.npy", embedding)
-
+    embedding = load_embedding(vocab, 300, "/data/sh/glove.6B.300d.txt", "/home/sh/data/coachdata/snips/emb/oov_embs.txt")
+    np.save("/home/sh/data/coachdata/snips/emb/slu_embs.npy", embedding)
 
 def gen_slot_embs_based_on_each_domain(emb_file):
     ## 1. generate slot2embs
@@ -55,6 +53,7 @@ def gen_slot_embs_based_on_each_domain(emb_file):
             if word not in word2emb:
                 word2emb[word] = []
     
+
     # load embeddings
     print("loading embeddings from %s" % emb_file)
     embedded_words = []
@@ -85,6 +84,10 @@ def gen_slot_embs_based_on_each_domain(emb_file):
             embs = embs + word2emb[word]
         slot2embs[slot] = embs
 
+
+    # print(slot2embs)
+
+
     ## 2. generate slot2embs based on each domain
     slot_embs_based_on_each_domain = {}
     for domain, slot_names in domain2slot.items():
@@ -94,13 +97,12 @@ def gen_slot_embs_based_on_each_domain(emb_file):
             slot_embs[i] = embs
         slot_embs_based_on_each_domain[domain] = slot_embs
     
-    with open("/data/sh/coachdata/snips/emb/slot_embs_based_on_each_domain.dict", "wb") as f:
+    with open("/home/sh/data/coachdata/snips/emb/slot_embs_based_on_each_domain.dict", "wb") as f:
         pickle.dump(slot_embs_based_on_each_domain, f)
-
 
 def combine_word_with_char_embs_for_slot(slotembs_dict_file):
     import torchtext
-    char_ngram_model = torchtext.vocab.CharNGram(cache='/data/sh/')
+    char_ngram_model = torchtext.vocab.CharNGram(cache='/home/sh/data/')
     ## open wordlevel embeddings file
     with open(slotembs_dict_file, "rb") as f:
         slotembs_dict = pickle.load(f)
@@ -113,16 +115,15 @@ def combine_word_with_char_embs_for_slot(slotembs_dict_file):
         word_embs = slotembs_dict[domain]
         word_char_embs_dict[domain] = np.concatenate((word_embs, char_embs), axis=-1)
     
-    with open("/data/sh/coachdata/snips/emb/slot_word_char_embs_based_on_each_domain.dict", "wb") as f:
+    with open("/home/sh/data/coachdata/snips/emb/slot_word_char_embs_based_on_each_domain.dict", "wb") as f:
         pickle.dump(word_char_embs_dict, f)
-
 
 def combine_word_with_char_embs_for_vocab(wordembs_file):
     from src.datareader import datareader
     from src.utils import init_experiment
     from config import get_params
     import torchtext
-    char_ngram_model = torchtext.vocab.CharNGram(cache='/data/sh')
+    char_ngram_model = torchtext.vocab.CharNGram(cache='/home/sh/data/')
 
     params = get_params()
     logger = init_experiment(params, logger_filename=params.logger_filename)
@@ -136,8 +137,7 @@ def combine_word_with_char_embs_for_vocab(wordembs_file):
         char_emb = char_ngram_model[word].squeeze(0).numpy()
         word_char_embs[index] = np.concatenate((word_emb, char_emb), axis=-1)
     
-    np.save("/data/sh/coachdata/snips/emb/slu_word_char_embs.npy", word_char_embs)
-
+    np.save("/home/sh/data/coachdata/snips/emb/slu_word_char_embs.npy", word_char_embs)
 
 def add_slot_embs_to_slu_embs(slot_embs_file, slu_embs_file):
     from src.datareader import datareader
@@ -171,7 +171,7 @@ def add_slot_embs_to_slu_embs(slot_embs_file, slu_embs_file):
         assert emb is not None
         new_slu_embs[index] = emb
     
-    np.save("/data/sh/coachdata/snips/emb/slu_word_char_embs_with_slotembs.npy", new_slu_embs)
+    np.save("/home/sh/data/coachdata/snips/emb/slu_word_char_embs_with_slotembs.npy", new_slu_embs)
 
 if __name__ == "__main__":
     # gen_oov_words()
@@ -184,3 +184,4 @@ if __name__ == "__main__":
     # combine_word_with_char_embs_for_vocab("../data/snips/emb/slu_embs.npy")
     
     # add_slot_embs_to_slu_embs("../data/snips/emb/slot_word_char_embs_based_on_each_domain.dict", "../data/snips/emb/slu_word_char_embs.npy")
+
