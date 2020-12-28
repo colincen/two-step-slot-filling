@@ -24,8 +24,6 @@ class CoarseSLUTagger(nn.Module):
 
         nn.init.xavier_normal_(self.atten_w)
 
-
-
     def forward(self, X, y_dm, iseval=False, lengths=None):
         """
         Input: 
@@ -89,8 +87,7 @@ class CoarseSLUTagger(nn.Module):
 
     def get_labelembedding(self, lstm_hiddens, lengths, y_dm):
         res_emb = []
-
-
+        
         batch_example_emb = []
 
         for i in range(len(y_dm)):
@@ -131,7 +128,7 @@ class CoarseSLUTagger(nn.Module):
                     fa_id = father_keys.index(fa)
                     slot_coarse_emb[fa_id] = 1
 
-                    emb = torch.cat([slot_example_emb, slot_name_emb], 0)
+                    emb = torch.cat([slot_example_emb, slot_name_emb, slot_coarse_emb], 0)
 
 
                     temp_dict[fa].append(emb)
@@ -143,10 +140,6 @@ class CoarseSLUTagger(nn.Module):
 
         return res_emb 
                     
-
-
-
-
     def pad_label(self, lengths, y):
         bsz = len(lengths)
         max_len = torch.max(lengths)
@@ -196,10 +189,9 @@ class FinePredictor(nn.Module):
         self.coarse_fine_map = coarse_fine_map
 
 
-        self.similarity_W = nn.Parameter(torch.Tensor(self.input_dim*2, params.emb_dim))
+        self.similarity_W = nn.Parameter(torch.Tensor(self.input_dim*2 + len(father_keys), params.emb_dim))
         nn.init.xavier_normal_(self.similarity_W)
         
-
     def get_emb_for_coarse_fine_map(self, domain2slot, slot_embs, coarse_fine_map):
         
         slot2emb = {}
@@ -219,7 +211,6 @@ class FinePredictor(nn.Module):
                 # res_emb[domain][father] = torch.tensor(res_emb[domain][father]).cuda()
         
         return res_emb
-
 
     def forward(self, domains, cur_coarse, hidden_layers, y_label_embedding, coarse_B_index,coarse_I_index, binary_preditions=None, binary_golds=None, final_golds=None):
         binary_labels = binary_golds if binary_golds is not None else binary_preditions
@@ -423,4 +414,3 @@ class SentRepreGenerator(nn.Module):
         input_repre, _ = self.input_atten_layer(hidden_layers, x_lengths)
 
         return templates_repre, input_repre
-
