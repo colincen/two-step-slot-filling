@@ -1,7 +1,7 @@
 export CUDA_VISIBLE_DEVICES=1
 
 # python test.py --model_path ./experiments/coach_no_tr/br_0/best_model.pth --exp_id br_0 --bidirection --freeze_emb  --tgt_dm BookRestaurant
-python main.py --exp_name  coach_encode_slotname  --exp_id br_0 --bidirection --freeze_emb  --tgt_dm BookRestaurant
+python main.py --exp_name coach_encode_slotname  --exp_id br_0 --bidirection --freeze_emb  --tgt_dm BookRestaurant --tr --emb_file  /home/sh/data/coachdata/snips/emb/slu_word_char_embs_with_slotembs.npy
 
 
 # python main.py --exp_name coach_no_tr --exp_id atp_0 --bidirection --freeze_emb  --tgt_dm AddToPlaylist

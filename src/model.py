@@ -359,7 +359,7 @@ class FinePredictor(nn.Module):
                 # slot_embs_based_domain = torch.FloatTensor(self.slot_embs_list[domain_name][cur_coarse]).transpose(0,1).cuda()
 
                 # print(y_label_embedding[i][cur_coarse]["inputs"])
-                temp_label_embedding = [t.unsqueeze(1) for t in [y_label_embedding[i][cur_coarse]["inputs"]]]
+                temp_label_embedding = [t.unsqueeze(1) for t in y_label_embedding[i][cur_coarse]["inputs"]]
                 temp_label_embedding = torch.cat(temp_label_embedding, 1)
                 # print(temp_label_embedding.size())
                 slot_embs_based_domain = temp_label_embedding
@@ -376,20 +376,7 @@ class FinePredictor(nn.Module):
                 temp = torch.matmul(slot_embs_based_domain.transpose(0, 1), self.similarity_W)
                 temp = torch.matmul(temp, feature_each_sample.transpose(0,1)).transpose(0, 1)
                 pred_slotname_each_sample = temp
-                # print(temp.size())
 
-                # print(feature_each_sample.size())
-                # print(slot_embs_based_domain.size())
-
-                # print(feature_each_sample)
-                # print(slot_embs_based_domain)
-                # print(feature_each_sample.size())
-
-                # print(slot_embs_based_domain.size())
-
-                # print('-'*20)
-                # pred_slotname_each_sample = torch.matmul(feature_each_sample, slot_embs_based_domain)
-                # print(pred_slotname_each_sample.size())
             else:
                 pred_slotname_each_sample = None
             

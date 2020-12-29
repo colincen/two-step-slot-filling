@@ -115,7 +115,8 @@ class SLUTrainer(object):
                     new_inputs = self.coarse_tagger.pad_label2(new_length, new_inputs)
                 if len(new_length) > 0:
                 
-                    label_embedding_in_one_coarse = self.coarse_tagger.encode_slot_name(new_inputs, new_length).squeeze()
+                    label_embedding_in_one_coarse = self.coarse_tagger.encode_slot_name(new_inputs, new_length).squeeze(1)
+                    # print(label_embedding_in_one_coarse.size())
 
                 else:
                     label_embedding_in_one_coarse = None
@@ -172,25 +173,25 @@ class SLUTrainer(object):
 
             pred_fine_list = [temp for temp in pred_fine_list if temp is not None]
 
-            print('-'*20)
-            print(pred_fine_list)
-            print(gold_fine_list)
-            print('_'*20)
+            # print('-'*20)
+            # print(pred_fine_list)
+            # print(gold_fine_list)
+            # print('_'*20)
 
 
             all_pred_list.extend(pred_fine_list)
             all_gold_list.extend(gold_fine_list)
-            print('ooooooooooo')
-            print(all_gold_list)
-            print(all_pred_list)
-            print('kkkkkkkkkkk')
+            # print('ooooooooooo')
+            # print(all_gold_list)
+            # print(all_pred_list)
+            # print('kkkkkkkkkkk')
 
         # loss_slotname = torch.tensor(0).cuda()
             for pred_slotname_each_sample, gold_slotname_each_sample in zip(all_pred_list, all_gold_list):
-                print(pred_slotname_each_sample)
-                print(gold_slotname_each_sample)
-                print(pred_slotname_each_sample.size()[0])
-                print(gold_slotname_each_sample.size()[0])
+                # print(pred_slotname_each_sample)
+                # print(gold_slotname_each_sample)
+                # print(pred_slotname_each_sample.size()[0])
+                # print(gold_slotname_each_sample.size()[0])
                 assert pred_slotname_each_sample.size()[0] == gold_slotname_each_sample.size()[0]
                 # loss_slotname = loss_slotname + self.loss_fn(pred_slotname_each_sample, gold_slotname_each_sample.cuda())
                 self.optimizer.zero_grad()
@@ -201,6 +202,7 @@ class SLUTrainer(object):
                 loss_slotname.backward(retain_graph=True)
                 self.optimizer.step()
         # print('-'*20)
+        '''
         if self.use_label_encoder:
             templates_repre, input_repre = self.sent_repre_generator(templates, tem_lengths, lstm_hiddens, lengths)
 
@@ -229,11 +231,9 @@ class SLUTrainer(object):
                 input_loss2.backward(retain_graph=True)
                 self.optimizer.step()
 
+        '''
 
-        if self.use_label_encoder:
-            return loss_bin.item(), loss_slotname.item(), template0_loss.item(), template1_loss.item()
-        else:
-            return loss_bin.item(), loss_slotname.item()
+        return loss_bin.item(), loss_slotname.item()
 
     def evaluate(self, dataloader, istestset=False):
         self.coarse_tagger.eval()
@@ -251,9 +251,80 @@ class SLUTrainer(object):
             final_golds.extend(y_final)
 
             X, lengths = X.cuda(), lengths.cuda()
+
+
+
+
+            batch_labelembedding = []
+            for i, domain in enumerate(y_dm):
+                sample_labelembedding = {}
+
+                for fa in father_keys:
+
+                    sample_labelembedding[fa] = {"inputs":[], "slots":[]}
+
+
+                    new_inputs = []
+                    new_length = []
+                    temp_slot = []
+                    dm = domain_set[domain.item()]
+
+                    for j in range(len(self.coarse_tagger.coarse_fine_map[dm][fa])):
+                        slot_name = self.coarse_tagger.coarse_fine_map[dm][fa][j]
+                        temp_slot.append(slot_name)
+                        slot_name_description = slot2desp[slot_name]
+                        extend_idxs = []
+                        for tok in slot_name_description.split():
+                            idx = self.vocab.word2index[tok]
+                            extend_idxs.append(idx)
+                        # print(X)
+                        # print('-'*30)
+                        # print(X[i])
+                        temp_input = X[i][:lengths[i]]
+                        # print(temp_input)
+                        # print('-'*10)
+                        extend_idxs = torch.tensor(extend_idxs).cuda()
+
+                        temp_input = torch.cat((temp_input, extend_idxs), 0)
+                        new_inputs.append(temp_input)
+                        new_length.append(len(temp_input))
+
+                    # print(new_inputs)
+                    # print(new_length)
+                    # print('-'*10)
+
+                    new_length = torch.tensor(new_length)
+                    if len(new_length) > 0:
+                        new_inputs = self.coarse_tagger.pad_label2(new_length, new_inputs)
+                    if len(new_length) > 0:
+                    
+                        label_embedding_in_one_coarse = self.coarse_tagger.encode_slot_name(new_inputs, new_length).squeeze(1)
+                        # print(label_embedding_in_one_coarse.size())
+
+                    else:
+                        label_embedding_in_one_coarse = None
+
+
+                    sample_labelembedding[fa]["inputs"] = label_embedding_in_one_coarse
+                    sample_labelembedding[fa]["slots"] = temp_slot
+
+                
+                
+                batch_labelembedding.append(sample_labelembedding)
+
+
+
+
+
+
+
+
+
+
+
             bin_preds_batch, lstm_hidden = self.coarse_tagger(X, y_dm, iseval=True)
 
-            y_label_embedding = self.coarse_tagger.get_labelembedding(lstm_hidden, lengths, y_dm)
+            # y_label_embedding = self.coarse_tagger.get_labelembedding(lstm_hidden, lengths, y_dm)
 
 
             bin_preds_batch = self.coarse_tagger.crf_decode(bin_preds_batch, lengths)
@@ -267,7 +338,7 @@ class SLUTrainer(object):
                 coarse_B_index = y1_set.index('B-'+k)
                 coarse_I_index = y1_set.index('I-'+k)
                 # print(k)
-                pred_fine_list = self.fine_tagger(y_dm,  k, lstm_hidden, y_label_embedding, coarse_B_index=coarse_B_index, coarse_I_index=coarse_I_index, binary_preditions=bin_preds_batch)
+                pred_fine_list = self.fine_tagger(y_dm,  k, lstm_hidden, batch_labelembedding, coarse_B_index=coarse_B_index, coarse_I_index=coarse_I_index, binary_preditions=bin_preds_batch)
                 # print(pred_fine_list)
                 # print('-'*10)
                 
