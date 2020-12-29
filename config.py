@@ -14,7 +14,7 @@ def get_params():
     parser.add_argument("--emb_file", type=str, default="/home/sh/data/coachdata/snips/emb/slu_word_char_embs.npy", help="embeddings file")  # slu_embs.npy w/o char embeddings   slu_word_char_embs.npy w/ char embeddings  slu_word_char_embs_with_slotembs.npy  w/ char and slot embs
     # slu_word_char_embs_with_slotembs.npy
     parser.add_argument("--emb_dim", type=int, default=400, help="embedding dimension") #400
-    parser.add_argument("--batch_size", type=int, default=32, help="batch size")
+    parser.add_argument("--batch_size", type=int, default=4, help="batch size")
     parser.add_argument("--num_binslot", type=int, default=15, help="number of father slot")
     parser.add_argument("--num_slot", type=int, default=72, help="number of slot types")
     parser.add_argument("--num_domain", type=int, default=7, help="number of domain")

@@ -9,6 +9,7 @@ import os
 from tqdm import tqdm
 import numpy as np
 import logging
+import copy
 
 logger = logging.getLogger()
 
@@ -66,18 +67,76 @@ class SLUTrainer(object):
         
         ########
 
+        # print(X)
+        # print(lengths)
+        # print(y_dm)
+
         # concat X and slot_emb
+        batch_labelembedding = []
         for i, domain in enumerate(y_dm):
+            sample_labelembedding = {}
 
             for fa in father_keys:
 
+                sample_labelembedding[fa] = {"inputs":[], "slots":[]}
+
+
+                new_inputs = []
+                new_length = []
+                temp_slot = []
                 dm = domain_set[domain.item()]
 
                 for j in range(len(self.coarse_tagger.coarse_fine_map[dm][fa])):
                     slot_name = self.coarse_tagger.coarse_fine_map[dm][fa][j]
+                    temp_slot.append(slot_name)
                     slot_name_description = slot2desp[slot_name]
+                    extend_idxs = []
                     for tok in slot_name_description.split():
                         idx = self.vocab.word2index[tok]
+                        extend_idxs.append(idx)
+                    # print(X)
+                    # print('-'*30)
+                    # print(X[i])
+                    temp_input = X[i][:lengths[i]]
+                    # print(temp_input)
+                    # print('-'*10)
+                    extend_idxs = torch.tensor(extend_idxs).cuda()
+
+                    temp_input = torch.cat((temp_input, extend_idxs), 0)
+                    new_inputs.append(temp_input)
+                    new_length.append(len(temp_input))
+
+                # print(new_inputs)
+                # print(new_length)
+                # print('-'*10)
+
+                new_length = torch.tensor(new_length)
+                if len(new_length) > 0:
+                    new_inputs = self.coarse_tagger.pad_label2(new_length, new_inputs)
+                if len(new_length) > 0:
+                
+                    label_embedding_in_one_coarse = self.coarse_tagger.encode_slot_name(new_inputs, new_length).squeeze()
+
+                else:
+                    label_embedding_in_one_coarse = None
+
+
+                sample_labelembedding[fa]["inputs"] = label_embedding_in_one_coarse
+                sample_labelembedding[fa]["slots"] = temp_slot
+
+            batch_labelembedding.append(sample_labelembedding)
+
+        # print(len(batch_labelembedding))
+        # print(batch_labelembedding[0])
+ 
+
+
+        # print(batch_labelembedding)
+
+                        
+
+                    
+        # print('-'*10)
 
 
 
@@ -96,7 +155,9 @@ class SLUTrainer(object):
         self.optimizer.step()
 
 
-        y_label_embedding = self.coarse_tagger.get_labelembedding(lstm_hiddens, lengths, y_dm)
+        # y_label_embedding = self.coarse_tagger.get_labelembedding(lstm_hiddens, lengths, y_dm)
+
+        # print(y_label_embedding)
 
 
         for k in father_keys:
@@ -106,14 +167,30 @@ class SLUTrainer(object):
             v = father_son_slot[k]
             coarse_B_index = y1_set.index('B-'+k)
             coarse_I_index = y1_set.index('I-'+k)
-            pred_fine_list, gold_fine_list = self.fine_tagger(y_dm,  k, lstm_hiddens, y_label_embedding, coarse_B_index=coarse_B_index, coarse_I_index=coarse_I_index,binary_golds=y_bin, final_golds = y_final)
+            pred_fine_list, gold_fine_list = self.fine_tagger(y_dm,  k, lstm_hiddens, batch_labelembedding, coarse_B_index=coarse_B_index, coarse_I_index=coarse_I_index,binary_golds=y_bin, final_golds = y_final)
+
+
             pred_fine_list = [temp for temp in pred_fine_list if temp is not None]
+
+            print('-'*20)
+            print(pred_fine_list)
+            print(gold_fine_list)
+            print('_'*20)
+
 
             all_pred_list.extend(pred_fine_list)
             all_gold_list.extend(gold_fine_list)
+            print('ooooooooooo')
+            print(all_gold_list)
+            print(all_pred_list)
+            print('kkkkkkkkkkk')
 
         # loss_slotname = torch.tensor(0).cuda()
             for pred_slotname_each_sample, gold_slotname_each_sample in zip(all_pred_list, all_gold_list):
+                print(pred_slotname_each_sample)
+                print(gold_slotname_each_sample)
+                print(pred_slotname_each_sample.size()[0])
+                print(gold_slotname_each_sample.size()[0])
                 assert pred_slotname_each_sample.size()[0] == gold_slotname_each_sample.size()[0]
                 # loss_slotname = loss_slotname + self.loss_fn(pred_slotname_each_sample, gold_slotname_each_sample.cuda())
                 self.optimizer.zero_grad()

@@ -85,8 +85,19 @@ class CoarseSLUTagger(nn.Module):
 
         return crf_loss
 
-    def encode_slot_name(self, inputs):
-        pass
+    def encode_slot_name(self, inputs, lengths):
+        lengths = torch.tensor(lengths).cuda()-1
+        lengths = lengths.unsqueeze(-1)
+
+        lstm_hiddens = self.lstm(inputs)
+        lengths = lengths.repeat(1, lstm_hiddens.size(-1))
+        lengths = lengths.unsqueeze(1)
+
+        emb = torch.gather(lstm_hiddens, 1, lengths)
+
+        return emb
+
+        
     
     def get_labelembedding(self, lstm_hiddens, lengths, y_dm):
         res_emb = []
@@ -142,8 +153,23 @@ class CoarseSLUTagger(nn.Module):
             res_emb.append(temp_dict)
 
         return res_emb 
-                    
+
+
     def pad_label(self, lengths, y):
+        bsz = len(lengths)
+        max_len = torch.max(lengths)
+        padded_y = torch.LongTensor(bsz, max_len).fill_(SLOT_PAD)
+        for i in range(bsz):
+            length = lengths[i]
+            y_i = y[i]
+            padded_y[i, 0:length] = torch.LongTensor(y_i)
+
+        padded_y = padded_y.cuda()
+        return padded_y
+
+    def pad_label2(self, lengths, y):
+        y = [yy.cpu() for yy in y]
+        lengths = lengths.cpu()
         bsz = len(lengths)
         max_len = torch.max(lengths)
         padded_y = torch.LongTensor(bsz, max_len).fill_(SLOT_PAD)
@@ -332,8 +358,10 @@ class FinePredictor(nn.Module):
             if len(feature_list[i]) != 0 and len(self.slot_embs_list[domain_name][cur_coarse]) != 0:
                 # slot_embs_based_domain = torch.FloatTensor(self.slot_embs_list[domain_name][cur_coarse]).transpose(0,1).cuda()
 
-                temp_label_embedding = [t.unsqueeze(1) for t in y_label_embedding[i][cur_coarse]]
+                # print(y_label_embedding[i][cur_coarse]["inputs"])
+                temp_label_embedding = [t.unsqueeze(1) for t in [y_label_embedding[i][cur_coarse]["inputs"]]]
                 temp_label_embedding = torch.cat(temp_label_embedding, 1)
+                # print(temp_label_embedding.size())
                 slot_embs_based_domain = temp_label_embedding
                 # print(slot_embs_based_domain.size())
                 # print(temp_label_embedding.size())
