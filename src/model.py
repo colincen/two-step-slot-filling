@@ -96,8 +96,6 @@ class CoarseSLUTagger(nn.Module):
         emb = torch.gather(lstm_hiddens, 1, lengths)
 
         return emb
-
-        
     
     def get_labelembedding(self, lstm_hiddens, lengths, y_dm):
         res_emb = []
@@ -153,7 +151,6 @@ class CoarseSLUTagger(nn.Module):
             res_emb.append(temp_dict)
 
         return res_emb 
-
 
     def pad_label(self, lengths, y):
         bsz = len(lengths)
@@ -345,33 +342,20 @@ class FinePredictor(nn.Module):
             if final_golds is not None:
                 gold_slotname_each_sample = torch.LongTensor(gold_slotname_each_sample)   # (num_slotname)
                 gold_slotname_list.append(gold_slotname_each_sample)
-        # print(gold_slotname_list)
-        # print(cur_coarse)
-        # print('-'*20)
+       
         pred_slotname_list = []
         for i in range(bsz):
             dm_id = domains[i]
             domain_name = domain_set[dm_id]
-            # print(self.slot_embs_list[domain_name])
-            # print(cur_coarse)
-            # if len(self.slot_embs_list[domain_name][cur_coarse]) != 0:
+       
             if len(feature_list[i]) != 0 and len(self.slot_embs_list[domain_name][cur_coarse]) != 0:
-                # slot_embs_based_domain = torch.FloatTensor(self.slot_embs_list[domain_name][cur_coarse]).transpose(0,1).cuda()
-
-                # print(y_label_embedding[i][cur_coarse]["inputs"])
+       
                 temp_label_embedding = [t.unsqueeze(1) for t in y_label_embedding[i][cur_coarse]["inputs"]]
                 temp_label_embedding = torch.cat(temp_label_embedding, 1)
-                # print(temp_label_embedding.size())
+       
                 slot_embs_based_domain = temp_label_embedding
-                # print(slot_embs_based_domain.size())
-                # print(temp_label_embedding.size())
-
-                # print('-'*20)
-                
+           
                 feature_each_sample = feature_list[i]
-
-
-
 
                 temp = torch.matmul(slot_embs_based_domain.transpose(0, 1), self.similarity_W)
                 temp = torch.matmul(temp, feature_each_sample.transpose(0,1)).transpose(0, 1)
@@ -382,8 +366,6 @@ class FinePredictor(nn.Module):
             
             pred_slotname_list.append(pred_slotname_each_sample)
 
-        # print(pred_slotname_list)
-        # print(gold_slotname_list)
 
         if final_golds is not None:
             return pred_slotname_list, gold_slotname_list

@@ -307,26 +307,12 @@ class SLUTrainer(object):
 
                     sample_labelembedding[fa]["inputs"] = label_embedding_in_one_coarse
                     sample_labelembedding[fa]["slots"] = temp_slot
-
-                
-                
+                               
                 batch_labelembedding.append(sample_labelembedding)
-
-
-
-
-
-
-
-
-
-
 
             bin_preds_batch, lstm_hidden = self.coarse_tagger(X, y_dm, iseval=True)
 
-            # y_label_embedding = self.coarse_tagger.get_labelembedding(lstm_hidden, lengths, y_dm)
-
-
+           
             bin_preds_batch = self.coarse_tagger.crf_decode(bin_preds_batch, lengths)
            
             binary_preds.extend(bin_preds_batch)
@@ -339,16 +325,12 @@ class SLUTrainer(object):
                 coarse_I_index = y1_set.index('I-'+k)
                 # print(k)
                 pred_fine_list = self.fine_tagger(y_dm,  k, lstm_hidden, batch_labelembedding, coarse_B_index=coarse_B_index, coarse_I_index=coarse_I_index, binary_preditions=bin_preds_batch)
-                # print(pred_fine_list)
-                # print('-'*10)
-                
-                # pred_fine_list = [temp for temp in pred_fine_list if temp is not None]
+
 
                 all_pred_list.append(pred_fine_list)
                 
 
-            # coarse_preds_batch = self.fine_tagger(y_dm, lstm_hiddens, binary_preditions=bin_preds_batch, binary_golds=None, final_golds=None)
-            
+             
             final_preds_batch = self.combine_binary_and_slotname_preds(y_dm, bin_preds_batch, all_pred_list, self.fine_tagger.coarse_fine_map)
             final_preds.extend(final_preds_batch)
 
